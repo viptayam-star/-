@@ -1,0 +1,420 @@
+/**
+ * ============================================================================
+ * منصة عنوان التعليمية - ملف البرمجة الرئيسي والاحترافي (Anwan Core Engine)
+ * الإصدار: 3.5.0 - نظام إدارة المنصات المركزية للمشرف العام
+ * ============================================================================
+ */
+
+'use strict';
+
+// الكائن المركزي لإدارة حالة التطبيق (State Management Store)
+const AnwanStore = {
+    state: {
+        teachers: [],
+        announcements: [],
+        activityLogs: [],
+        settings: {
+            autoSync: true,
+            theme: 'dark-glass',
+            refreshRate: 5000
+        },
+        filters: {
+            searchQuery: '',
+            statusFilter: 'all',
+            subjectFilter: 'all'
+        }
+    },
+
+    // تهيئة البيانات الافتراضية والتخزين المحلي
+    init() {
+        try {
+            const savedTeachers = localStorage.getItem('anwan_core_teachers');
+            if (savedTeachers) {
+                this.state.teachers = JSON.parse(savedTeachers);
+            } else {
+                this.state.teachers = [
+                    { id: 101, name: "أ. محمد عبد الله", subject: "الفيزياء التطبيقية", link: "/teachers/mohamed-abdullah", cardsCount: 142, active: true, joinedDate: "2026-01-15" },
+                    { id: 102, name: "أ. أحمد سامي", subject: "الرياضيات البحتة", link: "/teachers/ahmed-sami", cardsCount: 98, active: true, joinedDate: "2026-02-10" },
+                    { id: 103, name: "أ. محمود خالد", subject: "الكيمياء العضوية", link: "/teachers/mahmoud-khaled", cardsCount: 65, active: false, joinedDate: "2026-03-01" },
+                    { id: 104, name: "د. سارة مصطفى", subject: "اللغة العربية والنحو", link: "/teachers/sara-mostafa", cardsCount: 210, active: true, joinedDate: "2026-01-20" }
+                ];
+                this.saveTeachers();
+            }
+
+            const savedAnnouncements = localStorage.getItem('anwan_global_announcements');
+            if (savedAnnouncements) {
+                this.state.announcements = JSON.parse(savedAnnouncements);
+            } else {
+                this.state.announcements = [
+                    { id: Date.now(), text: "تنبيه هام: انتظام المحاضرات في جميع المواعيد المحددة هذا الأسبوع بجميع المناهج الدراسية.", date: new Date().toISOString(), active: true }
+                ];
+            }
+
+            const savedLogs = localStorage.getItem('anwan_activity_logs');
+            if (savedLogs) {
+                this.state.activityLogs = JSON.parse(savedLogs);
+            }
+
+            console.log('[Anwan Core] State initialized successfully.');
+        } catch (error) {
+            console.error('[Anwan Core Error] Failed to initialize state:', error);
+            UiManager.showToast('حدث خطأ أثناء تحميل بيانات النظام المحلية.', 'error');
+        }
+    },
+
+    saveTeachers() {
+        localStorage.setItem('anwan_core_teachers', JSON.stringify(this.state.teachers));
+        this.logActivity('حفظ بيانات المدرسين', 'تم تحديث قاعدة بيانات المدرسين بنجاح.');
+    },
+
+    logActivity(action, details) {
+        const logEntry = {
+            id: Date.now(),
+            action: action,
+            details: details,
+            timestamp: new Date().toLocaleTimeString('ar-EG')
+        };
+        this.state.activityLogs.unshift(logEntry);
+        if (this.state.activityLogs.length > 50) this.state.activityLogs.pop();
+        localStorage.setItem('anwan_activity_logs', JSON.stringify(this.state.activityLogs));
+    }
+};
+
+// نظام إدارة الواجهات وعرض العناصر (UI Manager)
+const UiManager = {
+    init() {
+        this.cacheDOM();
+        this.bindEvents();
+        this.renderAll();
+    },
+
+    cacheDOM() {
+        this.dom = {
+            toastContainer: document.getElementById('toastContainer'),
+            teachersTableBody: document.getElementById('teachersTableBody'),
+            announcementInput: document.getElementById('announcementInput'),
+            announcementTextDisplay: document.getElementById('announcementTextDisplay'),
+            addTeacherModal: document.getElementById('addTeacherModal'),
+            searchInput: document.getElementById('searchInput'),
+            totalTeachersCount: document.getElementById('totalTeachersCount'),
+            activeTeachersCount: document.getElementById('activeTeachersCount'),
+            totalCardsCount: document.getElementById('totalCardsCount')
+        };
+    },
+
+    bindEvents() {
+        // الاستماع لأحداث الكيبورد والاختصارات
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                this.closeAddModal();
+            }
+        });
+
+        // الاستماع للبحث الفوري إن وجد الحقل
+        if (this.dom.searchInput) {
+            this.dom.searchInput.addEventListener('input', (e) => {
+                AnwanStore.state.filters.searchQuery = e.target.value.trim().toLowerCase();
+                this.renderTeachersTable();
+            });
+        }
+    },
+
+    renderAll() {
+        this.renderTeachersTable();
+        this.renderStats();
+        this.renderLatestAnnouncement();
+    },
+
+    // إظهار الإشعارات العائمة الاحترافية (Toast System)
+    showToast(message, type = 'info') {
+        let container = this.dom.toastContainer;
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.style.cssText = 'position: fixed; bottom: 24px; left: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 12px;';
+            document.body.appendChild(container);
+            this.dom.toastContainer = container;
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'toast-item';
+        toast.style.cssText = 'background: #0f172a; color: #fff; padding: 14px 20px; border-radius: 12px; border-right: 4px solid #06b6d4; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); display: flex; align-items: center; gap: 12px; font-size: 13px; font-family: "Cairo", sans-serif;';
+        
+        let iconClass = 'fa-circle-check text-cyan-400';
+        let borderColor = '#06b6d4';
+        if (type === 'error') {
+            iconClass = 'fa-triangle-exclamation text-rose-400';
+            borderColor = '#f43f5e';
+        } else if (type === 'warning') {
+            iconClass = 'fa-circle-exclamation text-amber-400';
+            borderColor = '#f59e0b';
+        }
+        toast.style.borderRightColor = borderColor;
+
+        toast.innerHTML = `
+            <i class="fa-solid ${iconClass} text-lg"></i>
+            <span class="font-medium">${message}</span>
+        `;
+
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(-100%)';
+            toast.style.transition = 'all 0.3s ease';
+            setTimeout(() => toast.remove(), 300);
+        }, 4000);
+    },
+
+    // عرض وتحديث جدول المدرسين بكامل تفاصيله
+    renderTeachersTable() {
+        const tbody = this.dom.teachersTableBody;
+        if (!tbody) return;
+
+        tbody.innerHTML = '';
+
+        let filteredTeachers = AnwanStore.state.teachers.filter(teacher => {
+            const matchesSearch = teacher.name.toLowerCase().includes(AnwanStore.state.filters.searchQuery) || 
+                                  teacher.subject.toLowerCase().includes(AnwanStore.state.filters.searchQuery);
+            return matchesSearch;
+        });
+
+        if (filteredTeachers.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="text-center py-12 text-slate-500 font-medium">
+                        <div class="flex flex-col items-center justify-center gap-2">
+                            <i class="fa-solid fa-folder-open text-3xl text-slate-600"></i>
+                            <span>لا توجد نتائج مطابقة لعملية البحث أو القائمة فارغة حالياً.</span>
+                        </div>
+                    </td>
+                </tr>`;
+            return;
+        }
+
+        filteredTeachers.forEach(teacher => {
+            const tr = document.createElement('tr');
+            tr.className = teacher.active 
+                ? 'hover:bg-slate-900/60 transition-colors border-b border-slate-800/60' 
+                : 'opacity-50 bg-slate-950/60 hover:bg-slate-900/40 transition-colors border-b border-slate-800/60';
+
+            tr.innerHTML = `
+                <td class="py-4 px-5 font-bold text-white flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center text-cyan-400 font-bold text-xs shadow-inner">
+                        ${teacher.name.charAt(0)}
+                    </div>
+                    <div>
+                        <span>${teacher.name}</span>
+                        <div class="text-[10px] text-slate-500 font-normal">تاريخ الانضمام: ${teacher.joinedDate || 'حديث'}</div>
+                    </div>
+                </td>
+                <td class="py-4 px-5 text-slate-300 font-medium">${teacher.subject}</td>
+                <td class="py-4 px-5 font-mono text-cyan-400 text-xs" dir="ltr">
+                    <span class="bg-slate-900 px-2.5 py-1 rounded-lg border border-slate-800">${teacher.link}</span>
+                </td>
+                <td class="py-4 px-5">
+                    <span class="inline-flex items-center px-3 py-1 rounded-xl text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        <i class="fa-solid fa-id-card ml-1.5"></i> ${teacher.cardsCount} كارت مسجل
+                    </span>
+                </td>
+                <td class="py-4 px-5">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${teacher.active ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}">
+                        <span class="w-1.5 h-1.5 rounded-full ${teacher.active ? 'bg-emerald-400' : 'bg-rose-400'} ml-1.5 animate-pulse"></span>
+                        ${teacher.active ? 'مفعل نشط' : 'حساب موقوف'}
+                    </span>
+                </td>
+                <td class="py-4 px-5 text-center">
+                    <div class="flex items-center justify-center gap-2">
+                        <button onclick="TeacherManager.toggleStatus(${teacher.id})" title="${teacher.active ? 'إيقاف حساب المدرس' : 'تفعيل حساب المدرس'}" class="px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${teacher.active ? 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20 border border-amber-500/20' : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20'} cursor-pointer">
+                            <i class="fa-solid ${teacher.active ? 'fa-ban' : 'fa-check'} ml-1"></i>
+                            ${teacher.active ? 'إيقاف' : 'تشغيل'}
+                        </button>
+                        <button onclick="TeacherManager.deleteTeacher(${teacher.id})" title="حذف المدرس نهائياً" class="px-3 py-1.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer">
+                            <i class="fa-solid fa-trash ml-1"></i> حذف
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+    },
+
+    renderStats() {
+        const teachers = AnwanStore.state.teachers;
+        const total = teachers.length;
+        const active = teachers.filter(t => t.active).length;
+        const totalCards = teachers.reduce((sum, t) => sum + t.cardsCount, 0);
+
+        if (this.dom.totalTeachersCount) this.dom.totalTeachersCount.textContent = total;
+        if (this.dom.activeTeachersCount) this.dom.activeTeachersCount.textContent = active;
+        if (this.dom.totalCardsCount) this.dom.totalCardsCount.textContent = totalCards;
+    },
+
+    renderLatestAnnouncement() {
+        const announcements = AnwanStore.state.announcements;
+        if (announcements.length > 0 && this.dom.announcementTextDisplay) {
+            this.dom.announcementTextDisplay.textContent = announcements[0].text;
+        }
+    },
+
+    openAddModal() {
+        if (this.dom.addTeacherModal) {
+            this.dom.addTeacherModal.classList.remove('hidden');
+        }
+    },
+
+    closeAddModal() {
+        if (this.dom.addTeacherModal) {
+            this.dom.addTeacherModal.classList.add('hidden');
+            const nameInput = document.getElementById('newTeacherName');
+            const subInput = document.getElementById('newTeacherSubject');
+            const linkInput = document.getElementById('newTeacherLink');
+            if (nameInput) nameInput.value = '';
+            if (subInput) subInput.value = '';
+            if (linkInput) linkInput.value = '';
+        }
+    }
+};
+
+// نظام إدارة المدرسين والعمليات (Teacher Manager Controller)
+const TeacherManager = {
+    add() {
+        const nameInput = document.getElementById('newTeacherName');
+        const subjectInput = document.getElementById('newTeacherSubject');
+        const linkInput = document.getElementById('newTeacherLink');
+
+        if (!nameInput || !subjectInput || !linkInput) return;
+
+        const name = nameInput.value.trim();
+        const subject = subjectInput.value.trim();
+        const link = linkInput.value.trim();
+
+        // التحقق من صحة المدخلات بصرامة
+        if (!name || !subject || !link) {
+            UiManager.showToast('تنبيه هام: يجب ملء جميع الحقول (اسم المدرس، المادة، الرابط) بشكل صحيح.', 'error');
+            return;
+        }
+
+        if (!link.startsWith('/')) {
+            UiManager.showToast('خطأ: يجب أن يبدأ رابط المسار (Slug) بعلامة الشرطة المائلة مثل /teachers/name', 'warning');
+            return;
+        }
+
+        const newTeacher = {
+            id: Date.now(),
+            name: name,
+            subject: subject,
+            link: link,
+            cardsCount: 0,
+            active: true,
+            joinedDate: new Date().toISOString().split('T')[0]
+        };
+
+        AnwanStore.state.teachers.push(newTeacher);
+        AnwanStore.saveTeachers();
+        
+        UiManager.renderAll();
+        UiManager.closeAddModal();
+        UiManager.showToast(`تمت إضافة المدرس "${name}" بنجاح وتم ربطه بالمنصة.`);
+    },
+
+    deleteTeacher(id) {
+        const teacherIndex = AnwanStore.state.teachers.findIndex(t => t.id === id);
+        if (teacherIndex !== -1) {
+            const teacherName = AnwanStore.state.teachers[teacherIndex].name;
+            if (confirm(`هل أنت متأكد تماماً من رغبتك في حذف المدرس "${teacherName}" نهائياً من قاعدة البيانات؟`)) {
+                AnwanStore.state.teachers.splice(teacherIndex, 1);
+                AnwanStore.saveTeachers();
+                UiManager.renderAll();
+                UiManager.showToast(`تم حذف المدرس "${teacherName}" من النظام نهائياً.`, 'warning');
+            }
+        }
+    },
+
+    toggleStatus(id) {
+        const teacher = AnwanStore.state.teachers.find(t => t.id === id);
+        if (teacher) {
+            teacher.active = !teacher.active;
+            AnwanStore.saveTeachers();
+            UiManager.renderAll();
+            const statusMessage = teacher.active ? `تم تفعيل حساب المدرس "${teacher.name}" بنجاح.` : `تم إيقاف حساب المدرس "${teacher.name}" مؤقتاً.`;
+            UiManager.showToast(statusMessage);
+        }
+    }
+};
+
+// نظام الإعلانات والرسائل العامة للمنصات (Announcement Controller)
+const AnnouncementManager = {
+    updateGlobal() {
+        const inputField = document.getElementById('announcementInput');
+        if (!inputField) return;
+
+        const text = inputField.value.trim();
+        if (!text) {
+            UiManager.showToast('الرجاء كتابة نص التنبيه أو الرسالة المراد نشرها في الشريط العلوي.', 'error');
+            return;
+        }
+
+        const newAnnouncement = {
+            id: Date.now(),
+            text: text,
+            date: new Date().toISOString(),
+            active: true
+        };
+
+        AnwanStore.state.announcements.unshift(newAnnouncement);
+        localStorage.setItem('anwan_global_announcements', JSON.stringify(AnwanStore.state.announcements));
+
+        if (UiManager.dom.announcementTextDisplay) {
+            UiManager.dom.announcementTextDisplay.textContent = text;
+        }
+
+        inputField.value = '';
+        AnwanStore.logActivity('تحديث الإعلان العام', text);
+        UiManager.showToast('تم نشر الرسالة العامة بنجاح وتعميمها فوراً على كافة منصات الطلاب.');
+    }
+};
+
+// نظام أدوات المطورين والنسخ الاحتياطي (Backup & Export System)
+const SystemUtilities = {
+    exportData() {
+        try {
+            const exportDataString = JSON.stringify(AnwanStore.state, null, 2);
+            const blob = new Blob([exportDataString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `anwan-platform-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            UiManager.showToast('تم تصدير النسخة الاحتياطية لبيانات المنصة بنجاح.');
+        } catch (error) {
+            console.error('[Export Error]:', error);
+            UiManager.showToast('فشل تصدير البيانات.', 'error');
+        }
+    },
+
+    clearSystemCache() {
+        if (confirm('تحذير خطير: هل تريد مسح ذاكرة التخزين المؤقت وإعادة ضبط المصنع للمنصة؟')) {
+            localStorage.clear();
+            location.reload();
+        }
+    }
+};
+
+// تهيئة وتشغيل النظام بالكامل عند اكتمال تحميل عناصر DOM
+document.addEventListener('DOMContentLoaded', () => {
+    AnwanStore.init();
+    UiManager.init();
+});
+
+// إتاحة الوظائف عالمياً للـ HTML Event Handlers
+window.openAddModal = () => UiManager.openAddModal();
+window.closeAddModal = () => UiManager.closeAddModal();
+window.saveNewTeacher = () => TeacherManager.add();
+window.updateGlobalAnnouncement = () => AnnouncementManager.updateGlobal();
+window.SystemUtilities = SystemUtilities;
+window.TeacherManager = TeacherManager;
+window.AnnouncementManager = AnnouncementManager;
