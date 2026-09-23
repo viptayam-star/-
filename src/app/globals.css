@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ────────────────────────────────────────────────────────────
+   Neubrutalism base — light-first (designmd.app/library/neubrutalism)
+   ──────────────────────────────────────────────────────────── */
+body {
+  font-family: var(--font-cairo), Cairo, system-ui, sans-serif;
+  background-color: #fbf7ea;
+  color: #111111;
+}
+
+::selection {
+  background: #ffeb3b;
+  color: #111111;
+}
+
+/* Chunky scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: #fbf7ea;
+}
+::-webkit-scrollbar-thumb {
+  background: #111111;
+  border: 3px solid #fbf7ea;
+  border-radius: 8px;
+}
+
+/* ── Motion: fade + translate-Y (16px → 0), 420ms ease-out ── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fadeUp 420ms ease-out both;
+}
+
+/* ── Toasts: quick slide-in ── */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-toast-in {
+  animation: toastIn 220ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-toast-in {
+    animation: none;
+  }
+}
